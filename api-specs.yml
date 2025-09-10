@@ -1,0 +1,884 @@
+openapi: 3.0.0
+info:
+  title: Swift Delivery Middleware API
+  description: Complete API specification for the middleware architecture project including ESB endpoints and microservices
+  version: 1.0.0
+  contact:
+    name: Middleware Architecture Team
+    email: team@swift.com
+
+servers:
+  - url: http://localhost:8080
+    description: WSO2 ESB Production Server
+  - url: http://localhost:3000
+    description: Customer Management System (Internal)
+  - url: tcp://localhost:8080
+    description: Warehouse Management System (Internal - TCP)
+  - url: http://localhost:4000
+    description: Route Optimization System (Internal)
+
+tags:
+  - name: ESB
+    description: Enterprise Service Bus endpoints (external facing)
+  - name: CMS
+    description: Customer Management System endpoints (internal)
+  - name: WMS
+    description: Warehouse Management System endpoints (internal)
+  - name: ROS
+    description: Route Optimization System endpoints (internal)
+
+paths:
+  # ESB Endpoints (external facing)
+  /cms/login:
+    post:
+      tags:
+        - ESB
+      summary: User login
+      description: Authenticate user and return access token with role information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-internal: 
+        service: cms
+        endpoint: /login
+        request-transform: |
+          json-to-xml:
+            input: 
+              email: $body.username
+              password: $body.password
+            output-template: |
+              <login>
+                <email>${email}</email>
+                <password>${password}</password>
+              </login>
+        response-transform: |
+          xml-to-json:
+            mapping:
+              status: /response/status
+              message: /response/message
+              accessToken: /response/sessionToken
+              user: 
+                id: /response/user/id
+                username: /response/user/email
+                name: extractFromToken(name)  # Example of custom transformation
+
+  /cms/orders:
+    get:
+      tags:
+        - ESB
+      summary: Get orders with optional filtering
+      description: Retrieve orders with optional filtering by customerId or driverId
+      parameters:
+        - name: customerId
+          in: query
+          description: Filter orders by customer ID
+          required: false
+          schema:
+            type: integer
+        - name: driverId
+          in: query
+          description: Filter orders by driver ID (used by ESB for route optimization workflow)
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearerAuth: []
+      x-internal:
+        service: cms
+        endpoint: /orders
+        request-transform: |
+          pass-through-params: true
+        response-transform: |
+          xml-to-json:
+            mapping:
+              response:
+                status: /response/status
+                orders: 
+                  $map: /response/orders/order
+                  $item:
+                    id: id
+                    product: product
+                    quantity: quantity
+                    status: status
+                    address: address
+                    coordinate:
+                      lat: coordinate/lat
+                      lng: coordinate/lng
+                    route_id: route_id
+                    created_at: created_at
+
+    post:
+      tags:
+        - ESB
+      summary: Create a new order
+      description: Place a new order for delivery
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewOrderRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewOrderResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-internal:
+        service: cms
+        endpoint: /new-order
+        request-transform: |
+          json-to-xml:
+            input: 
+              product: $body.order.product
+              quantity: $body.order.quantity
+              address: $body.order.address
+            output-template: |
+              <order>
+                <product>${product}</product>
+                <quantity>${quantity}</quantity>
+                <address>${address}</address>
+              </order>
+        response-transform: |
+          xml-to-json:
+            mapping:
+              response:
+                status: /response/status
+                message: /response/message
+                order: 
+                  id: /response/order/id
+                  client_id: /response/order/client_id
+                  product: /response/order/product
+                  quantity: /response/order/quantity
+                  status: /response/order/status
+                  address: /response/order/address
+                  route_id: /response/order/route_id
+                  created_at: /response/order/created_at
+
+  /orders/{orderId}/status:
+    put:
+      tags:
+        - ESB
+      summary: Update order status
+      description: Update the status of an existing order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: ID of the order to update
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusRequest'
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateOrderStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-internal:
+        service: wms
+        protocol: tcp
+        endpoint: update-order-status
+        request-transform: |
+          json-to-tcp:
+            format: "UPDATE_ORDER_STATUS|${orderId}|${body.status}"
+        response-transform: |
+          tcp-to-json:
+            format: "SUCCESS|${orderId}|${status}" 
+            mapping:
+              status: success
+              message: "Order status updated successfully"
+
+  /driver/optimize-routes:
+    post:
+      tags:
+        - ESB
+      summary: Optimize delivery routes for driver
+      description: |
+        Calculate optimized routes for a specific driver based on their current location.
+        Process:
+        1. ESB receives driver_id and current_location from frontend
+        2. ESB calls CMS to get orders assigned to driver
+        3. ESB calls ROS to optimize the route with orders and coordinates
+        4. Returns optimized route to frontend
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverOptimizeRoutesRequest'
+      responses:
+        '200':
+          description: Routes optimized successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeRoutesResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No orders found for driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-internal:
+        workflow:
+          - step: 1
+            service: cms
+            endpoint: /orders
+            method: GET
+            params: "driverId=${body.driver_id}"
+            request-transform: |
+              query-params:
+                driverId: $body.driver_id
+          - step: 2
+            service: ros
+            endpoint: /optimize-routes
+            method: POST
+            request-transform: |
+              json-combine:
+                driver_id: $body.driver_id
+                current_location: $body.current_location
+                orders: $step1.response.orders
+        response-transform: |
+          pass-through: true
+
+  # Internal Microservice Endpoints
+  /auth/login:
+    post:
+      tags:
+        - CMS
+      summary: CMS Login endpoint
+      description: Internal Customer Management System login (XML format)
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/CMSLoginRequest'
+            examples:
+              sample-request:
+                summary: Sample request to CMS
+                description: "reqest to cms"
+                value: |
+                  <login>
+                      <email>driver1@swift.com</email>
+                      <password>hashpass1</password>
+                  </login>
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSLoginResponse'
+
+  /orders:
+    get:
+      tags:
+        - CMS
+      summary: CMS Get orders endpoint
+      description: Internal Customer Management System get orders (XML format)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: query
+          schema: 
+            type: integer
+        - name: driverId
+          in: query
+          schema: 
+            type: integer
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSOrdersResponse'
+
+    post:
+      tags:
+        - CMS
+      summary: CMS Create order endpoint
+      description: Internal Customer Management System create order (XML format)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/CMSNewOrderRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSNewOrderResponse'
+
+  /wms/update-order-status/{orderId}:
+    put:
+      tags:
+        - WMS
+      summary: WMS Update order status endpoint
+      description: Internal Warehouse Management System update order status (TCP protocol)
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              example: "delivered"
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "SUCCESS|123|delivered"
+
+  /ros/optimize-routes:
+    post:
+      tags:
+        - ROS
+      summary: ROS Optimize routes endpoint
+      description: Internal Route Optimization System optimize routes (JSON format)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ROSOptimizeRoutesRequest'
+      responses:
+        '200':
+          description: Routes optimized successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ROSOptimizeRoutesResponse'
+
+components:
+  schemas:
+    # ESB Request Schemas
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          format: email
+          example: driver1@swift.com
+        password:
+          type: string
+          format: password
+          example: hashpass1
+
+    NewOrderRequest:
+      type: object
+      required:
+        - product
+        - quantity
+        - address
+      properties:
+        product:
+          type: string
+          example: monitor
+        quantity:
+          type: integer
+          minimum: 1
+          example: 4
+        address:
+          type: string
+          example: 123 Main St
+
+    UpdateOrderStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [pending, processing, in_transit, delivered, cancelled]
+          example: delivered
+
+    DriverOptimizeRoutesRequest:
+      type: object
+      required:
+        - driver_id
+        - current_location
+      properties:
+        driver_id:
+          type: integer
+          description: ID of the driver requesting route optimization
+          example: 5
+        current_location:
+          $ref: '#/components/schemas/Coordinate'
+
+    OptimizeRoutesRequest:
+      type: object
+      properties:
+        driver_id:
+          type: integer
+          example: 5
+        current_location:
+          $ref: '#/components/schemas/Coordinate'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderForOptimization'
+
+    # ESB Response Schemas
+    LoginResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Login successful
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+
+    OrdersResponse:
+      type: object
+      properties:
+        response:
+          type: object
+          properties:
+            status:
+              type: string
+              example: success
+            orders:
+              type: array
+              items:
+                $ref: '#/components/schemas/Order'
+
+    NewOrderResponse:
+      type: object
+      properties:
+        response:
+          type: object
+          properties:
+            status:
+              type: string
+              example: success
+            message:
+              type: string
+              example: Order placed successfully
+            order:
+              $ref: '#/components/schemas/Order'
+
+    UpdateOrderStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Order status updated successfully
+
+    OptimizeRoutesResponse:
+      type: object
+      properties:
+        response:
+          type: object
+          properties:
+            status:
+              type: string
+              example: success
+            orders:
+              type: object
+              properties:
+                order:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OptimizedOrder'
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Authentication failed
+
+    # CMS XML Schemas
+    CMSLoginRequest:
+      type: object
+      xml:
+        name: login
+      properties:
+        email:
+          type: string
+          xml:
+            name: email
+        password:
+          type: string
+          xml:
+            name: password
+
+    CMSLoginResponse:
+      type: object
+      xml:
+        name: response
+      properties:
+        status:
+          type: string
+          xml:
+            name: status
+        message:
+          type: string
+          xml:
+            name: message
+        user:
+          $ref: '#/components/schemas/CMSUser'
+        sessionToken:
+          type: string
+          xml:
+            name: sessionToken
+
+    CMSOrdersResponse:
+      type: object
+      xml:
+        name: response
+      properties:
+        status:
+          type: string
+          xml:
+            name: status
+        orders:
+          type: array
+          xml:
+            name: orders
+          items:
+            $ref: '#/components/schemas/CMSOrder'
+
+    CMSNewOrderRequest:
+      type: object
+      xml:
+        name: order
+      properties:
+        product:
+          type: string
+          xml:
+            name: product
+        quantity:
+          type: integer
+          xml:
+            name: quantity
+        address:
+          type: string
+          xml:
+            name: address
+
+    CMSNewOrderResponse:
+      type: object
+      xml:
+        name: response
+      properties:
+        status:
+          type: string
+          xml:
+            name: status
+        message:
+          type: string
+          xml:
+            name: message
+        order:
+          $ref: '#/components/schemas/CMSOrder'
+
+    # ROS Request/Response Schemas
+    ROSOptimizeRoutesRequest:
+      type: object
+      properties:
+        driver_id:
+          type: integer
+          example: 5
+        current_location:
+          $ref: '#/components/schemas/Coordinate'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderForOptimization'
+
+    ROSOptimizeRoutesResponse:
+      type: object
+      properties:
+        response:
+          type: object
+          properties:
+            status:
+              type: string
+              example: success
+            orders:
+              type: object
+              properties:
+                order:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OptimizedOrder'
+
+    # Data Models
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "1"
+        username:
+          type: string
+          format: email
+          example: driver1@swift.com
+        name:
+          type: string
+          example: kasun
+        role:
+          type: string
+          enum: [customer, driver]
+          example: driver
+
+    CMSUser:
+      type: object
+      xml:
+        name: user
+      properties:
+        id:
+          type: string
+          xml:
+            name: id
+        email:
+          type: string
+          xml:
+            name: email
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        client_id:
+          type: integer
+          example: 2
+        product:
+          type: string
+          example: Example Product
+        quantity:
+          type: integer
+          example: 2
+        status:
+          type: string
+          example: pending
+        address:
+          type: string
+          example: 123 Street, City
+        coordinate:
+          $ref: '#/components/schemas/Coordinate'
+        route_id:
+          type: integer
+          nullable: true
+          example: 5
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-09-03T21:17:51.543955
+
+    OrderForOptimization:
+      type: object
+      properties:
+        order_id:
+          type: integer
+          example: 1
+        address:
+          type: string
+          example: "123 Main Street, Colombo 01"
+        coordinate:
+          $ref: '#/components/schemas/Coordinate'
+
+    OptimizedOrder:
+      type: object
+      properties:
+        order_id:
+          type: integer
+          example: 1
+        address:
+          type: string
+          example: "123 Main Street, Colombo 01"
+        coordinate:
+          $ref: '#/components/schemas/Coordinate'
+
+    Coordinate:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: float
+          example: 6.9271
+        lng:
+          type: number
+          format: float
+          example: 79.8612
+
+    CMSOrder:
+      type: object
+      xml:
+        name: order
+      properties:
+        id:
+          type: integer
+          xml:
+            name: id
+        client_id:
+          type: integer
+          xml:
+            name: client_id
+        product:
+          type: string
+          xml:
+            name: product
+        quantity:
+          type: integer
+          xml:
+            name: quantity
+        status:
+          type: string
+          xml:
+            name: status
+        address:
+          type: string
+          xml:
+            name: address
+        coordinate:
+          type: object
+          xml:
+            name: coordinate
+          properties:
+            lat:
+              type: number
+              format: float
+              xml:
+                name: lat
+            lng:
+              type: number
+              format: float
+              xml:
+                name: lng
+        route_id:
+          type: integer
+          nullable: true
+          xml:
+            name: route_id
+        created_at:
+          type: string
+          format: date-time
+          xml:
+            name: created_at
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+x-kafka:
+  topics:
+    - name: order-events
+      description: Topic for order creation and update events
+    - name: route-optimization-requests
+      description: Topic for route optimization requests
+  producers:
+    - service: esb
+      topics: [order-events, route-optimization-requests]
+    - service: cms
+      topics: [order-events]
+  consumers:
+    - service: wms
+      topics: [order-events]
+    - service: ros
+      topics: [route-optimization-requests]

@@ -1,0 +1,25 @@
+{
+  "name": "swift-delivery-api-docs",
+  "version": "1.0.0",
+  "description": "Interactive API documentation for Swift Delivery Middleware",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 serve_docs.py",
+    "serve": "python3 serve_docs.py",
+    "serve:3000": "python3 serve_docs.py 3000",
+    "serve:8080": "python3 serve_docs.py 8080",
+    "dev": "python3 serve_docs.py 3001"
+  },
+  "keywords": [
+    "api",
+    "documentation",
+    "swagger",
+    "openapi",
+    "middleware"
+  ],
+  "author": "Swift Logistics Team",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
