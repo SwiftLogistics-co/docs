@@ -8,13 +8,13 @@ info:
     email: team@swift.com
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8290
     description: WSO2 ESB Production Server
   - url: http://localhost:3000
     description: Customer Management System (Internal)
-  - url: tcp://localhost:8080
+  - url: tcp://localhost:9000
     description: Warehouse Management System (Internal - TCP)
-  - url: http://localhost:4000
+  - url: http://localhost:8000
     description: Route Optimization System (Internal)
 
 tags:
