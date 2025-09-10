@@ -338,36 +338,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/CMSLoginResponse'
 
-  /orders:
-    get:
-      tags:
-        - CMS
-      summary: CMS Get orders endpoint
-      description: Internal Customer Management System get orders (XML format)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: customerId
-          in: query
-          schema: 
-            type: integer
-        - name: driverId
-          in: query
-          schema: 
-            type: integer
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/xml:
-              schema:
-                $ref: '#/components/schemas/CMSOrdersResponse'
-
+  /orders/createOrder:
     post:
       tags:
         - CMS
       summary: CMS Create order endpoint
-      description: Internal Customer Management System create order (XML format)
+      description: Internal Customer Management System create order (XML format). Requires Bearer token.
       security:
         - bearerAuth: []
       requestBody:
@@ -383,6 +359,79 @@ paths:
             application/xml:
               schema:
                 $ref: '#/components/schemas/CMSNewOrderResponse'
+
+  /orders/getByCustomer:
+    get:
+      tags:
+        - CMS
+      summary: Get orders for authenticated customer
+      description: Returns orders for the authenticated user (uses JWT from Authorization header).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSOrdersResponse'
+
+  /orders/getByDriver/{driver_id}:
+    post:
+      tags:
+        - CMS
+      summary: Get orders for a driver
+      description: |
+        Retrieves orders assigned to the specified driver. This endpoint accepts the driver id as a path parameter
+        and an optional `status` query parameter (e.g. ?status=pending). Requires Bearer token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: driver_id
+          in: path
+          description: Driver id to fetch orders for
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          description: Optional order status filter
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSOrdersResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver or orders not found
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /routes/routes:
+    get:
+      tags:
+        - CMS
+      summary: CMS Routes list
+      description: Retrieve all routes from CMS (XML format)
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CMSRoutesResponse'
 
   /wms/update-order-status/{orderId}:
     put:
@@ -672,6 +721,22 @@ components:
             name: message
         order:
           $ref: '#/components/schemas/CMSOrder'
+
+    CMSRoutesResponse:
+      type: object
+      xml:
+        name: response
+      properties:
+        status:
+          type: string
+          xml:
+            name: status
+        routes:
+          type: array
+          xml:
+            name: routes
+          items:
+            $ref: '#/components/schemas/Route'
 
     # ROS Request/Response Schemas
     ROSOptimizeRoutesRequest:
