@@ -339,66 +339,66 @@ paths:
       security:
         - bearerAuth: []
 
-  /driver/optimize-routes:
-    post:
-      tags:
-        - ESB
-      summary: Optimize delivery routes for driver
-      description: |
-        Calculate optimized routes for a specific driver based on their current location.
-        Process:
-        1. ESB receives driver_id and current_location from frontend
-        2. ESB calls CMS to get orders assigned to driver
-        3. ESB calls ROS to optimize the route with orders and coordinates
-        4. Returns optimized route to frontend
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DriverOptimizeRoutesRequest'
-      responses:
-        '200':
-          description: Routes optimized successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OptimizeRoutesResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: No orders found for driver
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      x-internal:
-        workflow:
-          - step: 1
-            service: cms
-            endpoint: /orders
-            method: GET
-            params: "driverId=${body.driver_id}"
-            request-transform: |
-              query-params:
-                driverId: $body.driver_id
-          - step: 2
-            service: ros
-            endpoint: /optimize-routes
-            method: POST
-            request-transform: |
-              json-combine:
-                driver_id: $body.driver_id
-                current_location: $body.current_location
-                orders: $step1.response.orders
-        response-transform: |
-          pass-through: true
+  # /driver/optimize-routes:
+  #   post:
+  #     tags:
+  #       - ESB
+  #     summary: Optimize delivery routes for driver
+  #     description: |
+  #       Calculate optimized routes for a specific driver based on their current location.
+  #       Process:
+  #       1. ESB receives driver_id and current_location from frontend
+  #       2. ESB calls CMS to get orders assigned to driver
+  #       3. ESB calls ROS to optimize the route with orders and coordinates
+  #       4. Returns optimized route to frontend
+  #     security:
+  #       - bearerAuth: []
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             $ref: '#/components/schemas/DriverOptimizeRoutesRequest'
+  #     responses:
+  #       '200':
+  #         description: Routes optimized successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/OptimizeRoutesResponse'
+  #       '401':
+  #         description: Unauthorized
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/ErrorResponse'
+  #       '404':
+  #         description: No orders found for driver
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/ErrorResponse'
+  #     x-internal:
+  #       workflow:
+  #         - step: 1
+  #           service: cms
+  #           endpoint: /orders
+  #           method: GET
+  #           params: "driverId=${body.driver_id}"
+  #           request-transform: |
+  #             query-params:
+  #               driverId: $body.driver_id
+  #         - step: 2
+  #           service: ros
+  #           endpoint: /optimize-routes
+  #           method: POST
+  #           request-transform: |
+  #             json-combine:
+  #               driver_id: $body.driver_id
+  #               current_location: $body.current_location
+  #               orders: $step1.response.orders
+  #       response-transform: |
+  #         pass-through: true
 
   # Internal Microservice Endpoints
   /auth/login:
