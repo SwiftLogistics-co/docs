@@ -9,13 +9,13 @@ info:
 
 servers:
   - url: http://localhost:8290
-    description: WSO2 ESB Production Server
+    description: WSO2 MI API Gateway
   - url: http://localhost:3000
-    description: Customer Management System (Internal)
-  - url: tcp://localhost:9000
-    description: Warehouse Management System (Internal - TCP)
+    description: Customer Management System (SOAP/XML)
+  - url: http://localhost:9000
+    description: Warehouse Management System (REST)
   - url: http://localhost:8000
-    description: Route Optimization System (Internal)
+    description: Route Optimization System (Flask)
 
 tags:
   - name: ESB
@@ -78,12 +78,12 @@ paths:
                 username: /response/user/email
                 name: extractFromToken(name)  # Example of custom transformation
 
-  /cms/orders:
+  /cms/getOrdersByCustomer:
     get:
       tags:
         - ESB
-      summary: Get orders with optional filtering
-      description: Retrieve orders with optional filtering by customerId or driverId
+      summary: Get orders for the current customer
+      description: Retrieve orders for the authenticated customer
       parameters:
         - name: customerId
           in: query
@@ -246,6 +246,95 @@ paths:
             mapping:
               status: success
               message: "Order status updated successfully"
+
+  /cms/getOrderByDriverAndStatus:
+    get:
+      tags:
+        - ESB
+      summary: Get orders by driver ID and status
+      description: Retrieve orders filtered by driver ID and status
+      parameters:
+        - name: driverId
+          in: query
+          description: Driver ID to filter orders
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          description: Order status to filter
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: object
+                    properties:
+                      driver_id:
+                        type: integer
+                      route_id:
+                        type: integer
+                      status:
+                        type: string
+                      orders:
+                        type: object
+                        properties:
+                          order:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Order'
+      security:
+        - bearerAuth: []
+
+  /ros/driver/routes/{driverId}:
+    get:
+      tags:
+        - ESB
+      summary: Get optimized routes for driver
+      description: Get the optimized route for a specific driver
+      parameters:
+        - name: driverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  optimization_summary:
+                    type: object
+                    properties:
+                      total_orders:
+                        type: integer
+                      total_distance_km:
+                        type: number
+                      algorithm_used:
+                        type: string
+                  optimized_route:
+                    type: object
+                    properties:
+                      orders:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OptimizedOrder'
+      security:
+        - bearerAuth: []
 
   /driver/optimize-routes:
     post:
@@ -433,33 +522,70 @@ paths:
               schema:
                 $ref: '#/components/schemas/CMSRoutesResponse'
 
-  /wms/update-order-status/{orderId}:
-    put:
+  /wms/updateOrderStatus/{orderId}/{Status}:
+    get:
       tags:
         - WMS
-      summary: WMS Update order status endpoint
-      description: Internal Warehouse Management System update order status (TCP protocol)
+      summary: Update order status
+      description: Update the status of an order
       parameters:
         - name: orderId
           in: path
           required: true
           schema:
             type: integer
-      requestBody:
-        required: true
-        content:
-          text/plain:
-            schema:
-              type: string
-              example: "delivered"
+        - name: Status
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [pending, processing, loaded, delivering, delivered]
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Status updated successfully
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: "SUCCESS|123|delivered"
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  clientId:
+                    type: integer
+                  routeId:
+                    type: integer
+                  product:
+                    type: string
+                  quantity:
+                    type: integer
+                  status:
+                    type: string
+                  address:
+                    type: string
+                  createdAt:
+                    type: array
+                    items:
+                      type: number
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /ros/optimize-routes:
     post:
