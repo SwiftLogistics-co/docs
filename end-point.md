@@ -33,16 +33,19 @@ res
 
 req
 
-```json
-{
-  "order": {
-    "product": "touch",
-    "quantity": 5,
-    "address": "matara st 23",
-    "route": 2,
-    "coordinate": [2.1233, 1.2343]
-  }
-}
+```bash
+curl -X POST http://localhost:8290/cms/new-order \
+    -H "Authorization: Bearer <YOUR_TOKEN_HERE>" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "order": {
+            "product": "touch",
+            "quantity": 5,
+            "address": "matara st 23",
+            "route": 2,
+            "coordinate": [2.1233, 1.2343]
+        }`
+    }
 ```
 
 res

@@ -135,7 +135,7 @@ paths:
                       lng: coordinate/lng
                     route_id: route_id
                     created_at: created_at
-
+  /cms/new-order:
     post:
       tags:
         - ESB
@@ -148,7 +148,12 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NewOrderRequest'
+              type: object
+              required:
+                - order
+              properties:
+                order:
+                  $ref: '#/components/schemas/NewOrderRequest'
       responses:
         '201':
           description: Order created successfully
@@ -171,11 +176,20 @@ paths:
               product: $body.order.product
               quantity: $body.order.quantity
               address: $body.order.address
+              route: $body.order.route
+              coordinate:
+                lat: $body.order.coordinate[0]
+                lng: $body.order.coordinate[1]
             output-template: |
               <order>
                 <product>${product}</product>
                 <quantity>${quantity}</quantity>
                 <address>${address}</address>
+                <route>${route}</route>
+                <coordinate>
+                  <lat>${coordinate.lat}</lat>
+                  <lng>${coordinate.lng}</lng>
+                </coordinate>
               </order>
         response-transform: |
           xml-to-json:
@@ -633,17 +647,28 @@ components:
         - product
         - quantity
         - address
+        - coordinate
       properties:
         product:
           type: string
-          example: monitor
+          example: touch
         quantity:
           type: integer
           minimum: 1
-          example: 4
+          example: 5
         address:
           type: string
-          example: 123 Main St
+          example: matara st 23
+        route:
+          type: integer
+          example: 2
+        coordinate:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+          example: [2.1233, 1.2343]
 
     UpdateOrderStatusRequest:
       type: object
