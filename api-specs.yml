@@ -265,9 +265,10 @@ paths:
         - name: status
           in: query
           description: Order status to filter
-          required: true
+          required: false
           schema:
             type: string
+            enum: [pending, processing, loaded, delivered, cancelled]
       responses:
         '200':
           description: Successful operation
