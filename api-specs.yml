@@ -84,19 +84,6 @@ paths:
         - ESB
       summary: Get orders for the current customer
       description: Retrieve orders for the authenticated customer
-      parameters:
-        - name: customerId
-          in: query
-          description: Filter orders by customer ID
-          required: false
-          schema:
-            type: integer
-        - name: driverId
-          in: query
-          description: Filter orders by driver ID (used by ESB for route optimization workflow)
-          required: false
-          schema:
-            type: integer
       responses:
         '200':
           description: Successful operation
@@ -207,7 +194,7 @@ paths:
                   route_id: /response/order/route_id
                   created_at: /response/order/created_at
 
-  /orders/{orderId}/status:
+  /wms/updateOrderStatus/{orderId}/{status}:
     put:
       tags:
         - ESB
@@ -222,12 +209,13 @@ paths:
           description: ID of the order to update
           schema:
             type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateOrderStatusRequest'
+        - name: status
+          in: path
+          required: true
+          description: New status for the order
+          schema:
+            type: string
+            enum: [pending, processing, loaded, delivered, cancelled]
       responses:
         '200':
           description: Status updated successfully
